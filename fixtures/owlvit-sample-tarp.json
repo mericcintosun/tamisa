@@ -1,0 +1,9 @@
+[
+  { "label": "a plastic bag", "score": 0.31, "box": { "xmin": 112, "ymin": 80, "xmax": 240, "ymax": 196 } },
+  { "label": "a plastic bag", "score": 0.24, "box": { "xmin": 498, "ymin": 402, "xmax": 610, "ymax": 520 } },
+  { "label": "a styrofoam cup", "score": 0.42, "box": { "xmin": 330, "ymin": 140, "xmax": 388, "ymax": 214 } },
+  { "label": "a styrofoam cup", "score": 0.37, "box": { "xmin": 602, "ymin": 118, "xmax": 660, "ymax": 190 } },
+  { "label": "a greasy pizza box", "score": 0.28, "box": { "xmin": 186, "ymin": 330, "xmax": 420, "ymax": 548 } },
+  { "label": "a paper coffee cup", "score": 0.19, "box": { "xmin": 452, "ymin": 248, "xmax": 506, "ymax": 330 } },
+  { "label": "food waste", "score": 0.11, "box": { "xmin": 40, "ymin": 560, "xmax": 132, "ymax": 640 } }
+]

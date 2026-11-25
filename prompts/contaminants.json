@@ -1,0 +1,7 @@
+[
+  { "id": "plastic-bag", "label": "Plastic bags", "prompt": "a plastic bag" },
+  { "id": "food-waste", "label": "Food waste", "prompt": "food waste" },
+  { "id": "foam-cup", "label": "Foam cups", "prompt": "a styrofoam cup" },
+  { "id": "pizza-box", "label": "Greasy pizza boxes", "prompt": "a greasy pizza box" },
+  { "id": "coffee-cup", "label": "Coffee cups", "prompt": "a paper coffee cup" }
+]
