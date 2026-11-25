@@ -7,6 +7,9 @@ import { CONTAMINANTS, DETECTION_THRESHOLD, MODEL_ID, type ContaminantId } from 
 
 export { DETECTION_THRESHOLD, MODEL_ID };
 
+/** ES module build of Transformers.js, pinned to the version in package.json. */
+const TRANSFORMERS_URL: string = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.0";
+
 export interface DetectionBox {
   id: string;
   contaminant: ContaminantId;
@@ -54,7 +57,10 @@ export function loadDetector(onProgress?: (pct: number) => void): Promise<Detect
   progressListener = onProgress ?? null;
   if (!detectorPromise) {
     detectorPromise = (async () => {
-      const { pipeline } = await import("@huggingface/transformers");
+      // Loaded from the CDN at runtime (webpackIgnore) so the bundler never needs the
+      // package installed; the model weights come from the network anyway.
+      const lib: { pipeline: unknown } = await import(/* webpackIgnore: true */ TRANSFORMERS_URL);
+      const { pipeline } = lib;
       const create = pipeline as unknown as (
         task: string,
         model: string,
