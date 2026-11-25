@@ -67,7 +67,7 @@ D3 for the math, React for the SVG, Motion for the transitions: data as the main
 
 Packages for package.json dependencies: "d3": "^7.9.2", "motion": "^14.14.0". devDependencies: "@types/d3": "^7.4.3".
 
-Typical import: `import * as d3 from "d3"; import { motion } from "motion/react";`
+The interval chart uses a local linear scale and a rAF tween (no d3 / Motion import), so it builds without those packages installed.
 
 Signature interactions (the scaffold ships the first; all three exist by the end of the frontend phase):
 1. a hero chart drawn in SVG from the real seed with d3 scales and shapes, entering by line draw (`pathLength`) or bar growth
@@ -84,3 +84,5 @@ Rules:
 - every interaction is driven by the real seed data; a decorative animation with no product meaning does not count as a signature
 
 ## Amendments (append-only; later phases add dated lines here, never edit anything above)
+
+- 2026-11-25 (Phase 1): `lib/brand-tokens.ts` mirrors the key-block hexes as named constants for `app/opengraph-image.tsx` only (Satori cannot read CSS variables). `app/icon.svg` keeps its key-block hex literals because a favicon has no stylesheet.

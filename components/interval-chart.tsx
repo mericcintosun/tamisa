@@ -1,17 +1,98 @@
 "use client";
 
 // Signature interaction 1 (K5 dataviz): the contamination chart, drawn in SVG from
-// the real bags. d3 does the scales only; React renders; Motion grows each bar and
-// opens each 95% interval from its point estimate. When a new bag changes the
-// estimate, the bars and whiskers glide to the new values, so the interval can be
-// seen narrowing.
+// the real bags. A small linear scale does the maths; React renders; a rAF tween grows
+// each bar and opens each 95% interval from its point estimate. When a new bag changes
+// the estimate, the bars and whiskers glide to the new values, so the interval can be
+// seen narrowing. (No d3 / Motion dependency: both were only used for these bits.)
 
-import * as d3 from "d3";
-import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useId, useLayoutEffect, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Estimate } from "@/lib/stats";
 import { fmt } from "@/lib/stats";
 import { cn } from "@/lib/utils";
+
+// ---- scale helpers (same results as d3.scaleLinear().ticks for a [0, max] domain) ----
+
+function tickStep(start: number, stop: number, count: number): number {
+  const step0 = Math.abs(stop - start) / Math.max(0, count);
+  let step1 = Math.pow(10, Math.floor(Math.log10(step0)));
+  const error = step0 / step1;
+  if (error >= Math.sqrt(50)) step1 *= 10;
+  else if (error >= Math.sqrt(10)) step1 *= 5;
+  else if (error >= Math.sqrt(2)) step1 *= 2;
+  return step1;
+}
+
+function linearScale(domain: [number, number], range: [number, number]) {
+  const [d0, d1] = domain;
+  const [r0, r1] = range;
+  const scale = (v: number) => (d1 === d0 ? r0 : r0 + ((v - d0) / (d1 - d0)) * (r1 - r0));
+  scale.ticks = (count: number) => {
+    const step = tickStep(d0, d1, count);
+    if (!isFinite(step) || step <= 0) return [d0];
+    const out: number[] = [];
+    const first = Math.ceil(d0 / step);
+    const last = Math.floor(d1 / step);
+    for (let i = first; i <= last; i++) out.push(Number((i * step).toPrecision(12)));
+    return out;
+  };
+  return scale;
+}
+
+// ---- motion helpers ----
+
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
+
+function useReducedMotion(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia(reducedMotionQuery);
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(reducedMotionQuery).matches,
+    () => false
+  );
+}
+
+/** Approximates cubic-bezier(0.19, 1, 0.22, 1) (ease-out-expo). */
+const ease = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+
+interface TweenTiming {
+  duration: number;
+  delay?: number;
+}
+
+/** Tweens an array of numbers toward `target`; duration 0 jumps straight there. */
+function useTween(target: number[], { duration, delay = 0 }: TweenTiming): number[] {
+  const [value, setValue] = useState(target);
+  const current = useRef(target);
+  const key = target.join(",");
+
+  useEffect(() => {
+    const to = key.split(",").map(Number);
+    const from = current.current;
+    if (duration <= 0 || from.length !== to.length) {
+      current.current = to;
+      setValue(to);
+      return;
+    }
+    const start = performance.now() + delay * 1000;
+    let frame = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, Math.max(0, (now - start) / (duration * 1000)));
+      const e = ease(t);
+      const next = from.map((f, i) => f + (to[i] - f) * e);
+      current.current = next;
+      setValue(next);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [key, duration, delay]);
+
+  return value;
+}
 
 interface IntervalChartProps {
   estimate: Estimate;
@@ -21,8 +102,6 @@ interface IntervalChartProps {
   compact?: boolean;
   className?: string;
 }
-
-const EASE = [0.19, 1, 0.22, 1] as const;
 
 export function IntervalChart({ estimate, caption, highlightId, compact = false, className }: IntervalChartProps) {
   const reduce = useReducedMotion();
@@ -50,15 +129,17 @@ export function IntervalChart({ estimate, caption, highlightId, compact = false,
   const gutter = compact ? 150 : 210;
   const top = 28;
   const height = top + rows.length * rowH + 8;
-  const maxValue = Math.max(30, Math.ceil((d3.max(rows, (r) => r.hi) ?? 30) / 10) * 10);
-  const x = d3.scaleLinear().domain([0, maxValue]).range([gutter, width - 70]);
+  const maxHi = rows.length > 0 ? Math.max(...rows.map((r) => r.hi)) : 30;
+  const maxValue = Math.max(30, Math.ceil((Number.isFinite(maxHi) ? maxHi : 30) / 10) * 10);
+  const x = linearScale([0, maxValue], [gutter, width - 70]);
   const ticks = x.ticks(compact ? 3 : 5);
   const collapsed = phase === "zero";
-  const transition = (i: number) => (phase === "live" && !reduce ? { duration: 0.9, ease: EASE, delay: i * 0.06 } : { duration: 0 });
+  const transition = (i: number): TweenTiming => (phase === "live" && !reduce ? { duration: 0.9, delay: i * 0.06 } : { duration: 0 });
 
   return (
     <figure className={cn("w-full", className)}>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={titleId} className="h-auto w-full overflow-visible">
+      <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={titleId} className="h-auto w-full min-w-[20rem] overflow-visible">
         <title id={titleId}>{caption}</title>
         {ticks.map((t) => (
           <g key={t}>
@@ -84,42 +165,17 @@ export function IntervalChart({ estimate, caption, highlightId, compact = false,
                 {r.label}
                 {r.thin ? " (1 bag)" : ""}
               </text>
-              <g transform={`translate(${x(0)} ${y - (isCampus ? 7 : 5)})`}>
-                <motion.rect
-                  height={isCampus ? 14 : 10}
-                  initial={false}
-                  animate={{ width: collapsed ? 0 : barW }}
-                  transition={transition(i)}
-                  className={isCampus || isHighlight ? "fill-primary" : "fill-deep stroke-foreground"}
-                  strokeWidth={isCampus || isHighlight ? 0 : 0.75}
-                />
-              </g>
-              <motion.line
-                y1={y}
-                y2={y}
-                initial={false}
-                animate={{ x1: collapsed ? x(r.point) : x(r.lo), x2: collapsed ? x(r.point) : x(r.hi) }}
-                transition={transition(i)}
-                className={r.thin ? "stroke-warn" : "stroke-foreground"}
-                strokeWidth={2}
-              />
-              <motion.line
-                y1={y - 8}
-                y2={y + 8}
-                initial={false}
-                animate={{ x1: collapsed ? x(r.point) : x(r.lo), x2: collapsed ? x(r.point) : x(r.lo) }}
-                transition={transition(i)}
-                className="stroke-foreground"
-                strokeWidth={2}
-              />
-              <motion.line
-                y1={y - 8}
-                y2={y + 8}
-                initial={false}
-                animate={{ x1: collapsed ? x(r.point) : x(r.hi), x2: collapsed ? x(r.point) : x(r.hi) }}
-                transition={transition(i)}
-                className="stroke-foreground"
-                strokeWidth={2}
+              <RowMarks
+                x0={x(0)}
+                y={y}
+                barH={isCampus ? 14 : 10}
+                barW={collapsed ? 0 : barW}
+                lo={collapsed ? x(r.point) : x(r.lo)}
+                hi={collapsed ? x(r.point) : x(r.hi)}
+                timing={transition(i)}
+                barClass={isCampus || isHighlight ? "fill-primary" : "fill-deep stroke-foreground"}
+                barStroke={isCampus || isHighlight ? 0 : 0.75}
+                lineClass={r.thin ? "stroke-warn" : "stroke-foreground"}
               />
               <text x={width} y={y + 5} textAnchor="end" className={cn("fill-foreground tabular-nums", compact ? "text-[13px]" : "text-[15px]", isCampus && "font-semibold")}>
                 {fmt(r.point, 0)}% ±{fmt((r.hi - r.lo) / 2, 1)}
@@ -128,6 +184,7 @@ export function IntervalChart({ estimate, caption, highlightId, compact = false,
           );
         })}
       </svg>
+      </div>
       <figcaption className="mt-3 max-w-[68ch] text-sm text-muted-foreground">{caption}</figcaption>
       <ul className="sr-only">
         {rows.map((r) => (
@@ -137,5 +194,31 @@ export function IntervalChart({ estimate, caption, highlightId, compact = false,
         ))}
       </ul>
     </figure>
+  );
+}
+
+interface RowMarksProps {
+  x0: number;
+  y: number;
+  barH: number;
+  barW: number;
+  lo: number;
+  hi: number;
+  timing: TweenTiming;
+  barClass: string;
+  barStroke: number;
+  lineClass: string;
+}
+
+/** The bar, interval line and two whisker caps for one row, tweened together. */
+function RowMarks({ x0, y, barH, barW, lo, hi, timing, barClass, barStroke, lineClass }: RowMarksProps) {
+  const [w, l, h] = useTween([barW, lo, hi], timing);
+  return (
+    <>
+      <rect x={x0} y={y - barH / 2} width={Math.max(0, w)} height={barH} className={barClass} strokeWidth={barStroke} />
+      <line x1={l} x2={h} y1={y} y2={y} className={lineClass} strokeWidth={2} />
+      <line x1={l} x2={l} y1={y - 8} y2={y + 8} className="stroke-foreground" strokeWidth={2} />
+      <line x1={h} x2={h} y1={y - 8} y2={y + 8} className="stroke-foreground" strokeWidth={2} />
+    </>
   );
 }

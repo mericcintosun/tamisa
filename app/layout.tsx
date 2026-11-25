@@ -20,7 +20,7 @@ const archivo = Archivo({
 export const metadata: Metadata = {
   title: {
     default: "Tamisa: campus waste audits with error bars",
-    template: "%s · Tamisa",
+    template: "%s | Tamisa",
   },
   description:
     "Tamisa counts contaminants in a tarp photo right in the browser, combines them with the scale weights, and reports your campus recovery and contamination rates with a 95% interval, plus how many more bags you need to sort.",

@@ -36,7 +36,7 @@ Contaminated recycling gets landfilled at the sorting facility, so the contamina
 
 ## Tech stack
 
-Next.js 15 (App Router), TypeScript strict, Tailwind CSS v4, shadcn-style primitives, Transformers.js, d3 (scales only) and Motion for the interval charts, a Web Worker, sessionStorage and localStorage, CSV export. Deployed on Vercel with no server routes and no database.
+Next.js 15 (App Router), React 19, TypeScript strict, Tailwind CSS v4, shadcn-style primitives, Transformers.js 3, d3 7 (scales only) and Motion for the interval charts, a Web Worker, sessionStorage and localStorage, CSV export. Deployed on Vercel with no database; server pages and three read-only `/api` routes read the seeded audit through one adapter (`lib/adapter.ts`).
 
 ## Quickstart
 
@@ -46,7 +46,7 @@ npm run dev
 # open http://localhost:3000
 ```
 
-No environment variables are needed (see `.env.example`). The first "Find contaminants" click downloads the OWL-ViT weights (allow a minute on a slow connection); after that it is cached.
+No secret is needed. `ADAPTER_MODE=fake` (the default, see `.env.example`) serves the seeded audit from `fixtures/northgate-fall-2026.json`; `npm run seed` rewrites its CSV copy. The first "Find contaminants" click downloads the OWL-ViT weights (allow a minute on a slow connection); after that it is cached.
 
 ## About the demo data
 
