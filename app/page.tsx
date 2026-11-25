@@ -1,16 +1,27 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { IntervalChart } from "@/components/interval-chart";
 import { SceneSlot } from "@/components/scene-slot";
 import { Button } from "@/components/ui/button";
-import { BOOT_ITERATIONS, BOOT_SEED, BUILDINGS, SEED_BAGS, SESSION } from "@/lib/data";
+import { getAdapter } from "@/lib/adapter";
+import { BOOT_ITERATIONS, BOOT_SEED, SESSION as DEFAULT_SESSION } from "@/lib/data";
 import { fmt, neymanPlan, planSentence, runBootstrap } from "@/lib/stats";
+
+export const metadata: Metadata = {
+  title: "Start",
+};
 
 // L5 bands: full-width horizontal bands alternating ground and surface, each one
 // sentence plus one artifact. No columns inside a band, no cards.
-export default function Home() {
-  const estimate = runBootstrap({ bags: SEED_BAGS, buildings: BUILDINGS, iterations: BOOT_ITERATIONS, seed: BOOT_SEED });
+export default async function Home() {
+  const bundle = await getAdapter().getSession(DEFAULT_SESSION.id);
+  if (!bundle) notFound();
+  const { session, bags, buildings } = bundle;
+
+  const estimate = runBootstrap({ bags, buildings, iterations: BOOT_ITERATIONS, seed: BOOT_SEED });
   const c = estimate.contamination;
-  const plan = neymanPlan(SEED_BAGS, SESSION.targetHalfWidth);
+  const plan = neymanPlan(bags, session.targetHalfWidth, buildings);
   const dirtiest = [...c.rows].sort((a, b) => b.point - a.point)[0];
 
   return (
@@ -41,7 +52,7 @@ export default function Home() {
         <div className="mx-auto max-w-5xl px-5 py-16">
           <div className="tamisa-enter">
             <p className="kicker">
-              {SESSION.campus}, {SEED_BAGS.length} bags so far
+              {session.campus}, {bags.length} bags so far
             </p>
             <h2 className="mt-2 max-w-[30ch] text-4xl leading-tight sm:text-5xl">
               Recycling bins here are {fmt(c.point, 0)}% contaminated, give or take {fmt(c.halfWidth)} points.
@@ -91,12 +102,12 @@ export default function Home() {
 
       <section className="border-t border-foreground bg-deep">
         <div className="mx-auto max-w-5xl px-5 py-20">
-          <h2 className="tamisa-enter max-w-[24ch] text-4xl leading-tight sm:text-5xl">Bag {SEED_BAGS.length + 1} is on the tarp. Log it and watch the margin move.</h2>
+          <h2 className="tamisa-enter max-w-[24ch] text-4xl leading-tight sm:text-5xl">Bag {bags.length + 1} is on the tarp. Log it and watch the margin move.</h2>
           <div className="mt-8 flex flex-wrap items-center gap-6">
             <Button asChild size="lg">
               <Link href="/audit/bin">Log the next bag</Link>
             </Button>
-            <Link href={`/result/${SESSION.id}`} className="text-sm underline decoration-1 underline-offset-4">
+            <Link href={`/result/${session.id}`} className="text-sm underline decoration-1 underline-offset-4">
               or read the report so far
             </Link>
           </div>

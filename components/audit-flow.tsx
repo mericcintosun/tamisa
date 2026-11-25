@@ -13,22 +13,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { draftToBag, nextBagId, useCampusEstimate, useDraft, useSavedBags, type BagDraft } from "@/lib/audit-store";
-import { BUILDINGS, CATEGORIES, FLOW_STEPS, SEED_BAGS, SESSION, STREAMS, buildingName, type Bag, type FlowStepId } from "@/lib/data";
+import { CATEGORIES, FLOW_STEPS, STREAMS, buildingName, type AuditSession, type Bag, type Building, type FlowStepId } from "@/lib/data";
 import { bagContamination, bagTotalKg, fmt, neymanPlan, planSentence, type CampusEstimate } from "@/lib/stats";
 import { cn } from "@/lib/utils";
 
 interface AuditFlowProps {
   step: FlowStepId;
+  session: AuditSession;
+  /** The session's bags as served by the adapter (lib/adapter.ts). */
+  seedBags: Bag[];
+  buildings: Building[];
   initialEstimate: CampusEstimate;
 }
 
-export function AuditFlow({ step, initialEstimate }: AuditFlowProps) {
+export function AuditFlow({ step, session, seedBags, buildings, initialEstimate }: AuditFlowProps) {
   const { draft, update, reset, ready } = useDraft();
   const saved = useSavedBags();
   const [justSaved, setJustSaved] = useState<string | null>(null);
 
-  const allBags = useMemo(() => [...SEED_BAGS, ...saved.bags], [saved.bags]);
-  const bagId = nextBagId(saved.bags.length, SEED_BAGS.length);
+  const allBags = useMemo(() => [...seedBags, ...saved.bags], [seedBags, saved.bags]);
+  const bagId = nextBagId(saved.bags.length, seedBags.length);
+  const hasBin = Boolean(draft.buildingId && draft.stream);
   const draftBag = useMemo(() => draftToBag(draft, bagId), [draft, bagId]);
   const withDraft = useMemo(() => (draftBag ? [...allBags, draftBag] : allBags), [allBags, draftBag]);
 
@@ -54,7 +59,7 @@ export function AuditFlow({ step, initialEstimate }: AuditFlowProps) {
       <div className="mt-10 grid gap-12 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <section key={step} className="tamisa-enter min-w-0">
           <p className="kicker">
-            Bag {justSaved && step === "estimate" ? justSaved : bagId} · {SESSION.title}
+            Bag {justSaved && step === "estimate" ? justSaved : bagId} · {session.title}
           </p>
           <h1 className="mt-1 text-4xl leading-tight sm:text-5xl">{current.question}</h1>
 
@@ -62,13 +67,19 @@ export function AuditFlow({ step, initialEstimate }: AuditFlowProps) {
             {!ready ? (
               <p className="text-sm text-muted-foreground" role="status">Opening the bag in progress…</p>
             ) : step === "bin" ? (
-              <BinStep draft={draft} onChange={update} />
+              <BinStep draft={draft} onChange={update} buildings={buildings} seedBags={seedBags} />
             ) : step === "tarp" ? (
-              <ContaminantDetector draft={draft} onChange={update} />
+              <>
+                {!hasBin && <PickBinFirst />}
+                <ContaminantDetector draft={draft} onChange={update} />
+              </>
             ) : step === "weights" ? (
               <WeightsStep draft={draft} onChange={update} />
             ) : (
               <EstimateStep
+                session={session}
+                buildings={buildings}
+                hasBin={hasBin}
                 draftBag={draftBag}
                 justSaved={justSaved}
                 beforeHalf={before.estimate.contamination.halfWidth}
@@ -157,14 +168,34 @@ function FlowProgress({ step, draft }: { step: FlowStepId; draft: BagDraft }) {
   );
 }
 
-function BinStep({ draft, onChange }: { draft: BagDraft; onChange: (p: Partial<BagDraft>) => void }) {
+/** Empty state for the steps that need a bin before they mean anything. */
+function PickBinFirst() {
+  return (
+    <p className="mb-6 max-w-[65ch] border-l-2 border-warn pl-4 text-sm">
+      <strong className="font-semibold">Pick a bin first.</strong> Tamisa needs the building and the stream to know which piles count as contamination.{" "}
+      <Link className="underline" href="/audit/bin">
+        Choose the bin
+      </Link>
+      .
+    </p>
+  );
+}
+
+interface BinStepProps {
+  draft: BagDraft;
+  onChange: (p: Partial<BagDraft>) => void;
+  buildings: Building[];
+  seedBags: Bag[];
+}
+
+function BinStep({ draft, onChange, buildings, seedBags }: BinStepProps) {
   return (
     <div className="space-y-8">
       <fieldset>
         <legend className="kicker mb-3">Building</legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          {BUILDINGS.map((b) => {
-            const n = SEED_BAGS.filter((bag) => bag.buildingId === b.id).length;
+          {buildings.map((b) => {
+            const n = seedBags.filter((bag) => bag.buildingId === b.id).length;
             return (
               <Button key={b.id} variant="choice" className="h-auto" aria-pressed={draft.buildingId === b.id} onClick={() => onChange({ buildingId: b.id })}>
                 <span>
@@ -198,11 +229,7 @@ function WeightsStep({ draft, onChange }: { draft: BagDraft; onChange: (p: Parti
   const rate = draft.stream ? bagContamination({ weightsKg: draft.weightsKg, stream: draft.stream }) : null;
   return (
     <div className="max-w-xl space-y-6">
-      {!stream && (
-        <p className="border-l-2 border-warn pl-4 text-sm">
-          Pick the bin first, so Tamisa knows which piles count as contamination. <Link className="underline" href="/audit/bin">Choose the bin</Link>.
-        </p>
-      )}
+      {(!stream || !draft.buildingId) && <PickBinFirst />}
       <ul>
         {CATEGORIES.map((c) => {
           const belongs = stream?.accepts.includes(c.id);
@@ -250,6 +277,9 @@ function WeightsStep({ draft, onChange }: { draft: BagDraft; onChange: (p: Parti
 }
 
 interface EstimateStepProps {
+  session: AuditSession;
+  buildings: Building[];
+  hasBin: boolean;
   draftBag: Bag | null;
   justSaved: string | null;
   beforeHalf: number;
@@ -259,12 +289,29 @@ interface EstimateStepProps {
   onSave: () => void;
 }
 
-function EstimateStep({ draftBag, justSaved, beforeHalf, after, computing, bags, onSave }: EstimateStepProps) {
-  const [target, setTarget] = useState(SESSION.targetHalfWidth);
-  const plan = useMemo(() => neymanPlan(bags, target), [bags, target]);
+function EstimateStep({ session, buildings, hasBin, draftBag, justSaved, beforeHalf, after, computing, bags, onSave }: EstimateStepProps) {
+  const [target, setTarget] = useState(session.targetHalfWidth);
+  const plan = useMemo(() => neymanPlan(bags, target, buildings), [bags, target, buildings]);
+
+  if (bags.length === 0) {
+    return (
+      <div className="max-w-[65ch] border-t border-border pt-5">
+        <p className="kicker">Empty audit</p>
+        <p className="mt-2 font-display text-2xl leading-snug">No bags logged yet</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The estimate needs at least one sorted bag.{" "}
+          <Link className="underline" href="/audit/bin">
+            Log the first bag
+          </Link>
+          .
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10">
+      {!hasBin && !justSaved && <PickBinFirst />}
       {draftBag ? (
         <div className="space-y-4">
           <p className="max-w-[65ch] text-lg">
@@ -286,15 +333,15 @@ function EstimateStep({ draftBag, justSaved, beforeHalf, after, computing, bags,
               <Link href="/audit/bin">Log the next bag</Link>
             </Button>
             <Button asChild variant="link">
-              <Link href={`/result/${SESSION.id}`}>Open the report</Link>
+              <Link href={`/result/${session.id}`}>Open the report</Link>
             </Button>
           </div>
         </div>
-      ) : (
+      ) : hasBin ? (
         <p className="max-w-[65ch] border-l-2 border-warn pl-4">
-          This bag is not complete yet: it needs a bin and at least one weight. <Link className="underline" href="/audit/bin">Start from the bin</Link>.
+          This bag is not complete yet: it needs at least one weight. <Link className="underline" href="/audit/weights">Enter the weights</Link>.
         </p>
-      )}
+      ) : null}
 
       <div className="max-w-xl">
         <p className="kicker">Sampling advisor</p>

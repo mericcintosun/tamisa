@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AuditFlow } from "@/components/audit-flow";
-import { BOOT_ITERATIONS, BOOT_SEED, BUILDINGS, FLOW_STEPS, SEED_BAGS, isFlowStep } from "@/lib/data";
+import { getAdapter } from "@/lib/adapter";
+import { BOOT_ITERATIONS, BOOT_SEED, FLOW_STEPS, SESSION, isFlowStep } from "@/lib/data";
 import { runBootstrap } from "@/lib/stats";
 
 export function generateStaticParams() {
@@ -18,8 +19,12 @@ export default async function AuditStepPage({ params }: { params: Promise<{ step
   const { step } = await params;
   if (!isFlowStep(step)) notFound();
 
-  // First paint uses the seeded audit; the client worker takes over from there.
-  const initialEstimate = runBootstrap({ bags: SEED_BAGS, buildings: BUILDINGS, iterations: BOOT_ITERATIONS, seed: BOOT_SEED });
+  const bundle = await getAdapter().getSession(SESSION.id);
+  if (!bundle) notFound();
+  const { session, bags, buildings } = bundle;
 
-  return <AuditFlow step={step} initialEstimate={initialEstimate} />;
+  // First paint uses the seeded audit; the client worker takes over from there.
+  const initialEstimate = runBootstrap({ bags, buildings, iterations: BOOT_ITERATIONS, seed: BOOT_SEED });
+
+  return <AuditFlow step={step} session={session} seedBags={bags} buildings={buildings} initialEstimate={initialEstimate} />;
 }

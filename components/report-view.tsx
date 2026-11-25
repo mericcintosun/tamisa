@@ -5,21 +5,24 @@
 // device are merged with the session's seeded bags.
 
 import { Download, Printer, Share2 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { IntervalChart } from "@/components/interval-chart";
 import { SceneSlot } from "@/components/scene-slot";
 import { Button } from "@/components/ui/button";
 import { bagsToCsv, downloadCsv, useCampusEstimate, useSavedBags } from "@/lib/audit-store";
-import { CONTAMINANTS, type AuditSession, type Bag } from "@/lib/data";
+import { CONTAMINANTS, type AuditSession, type Bag, type Building } from "@/lib/data";
 import { contaminantTotals, fmt, neymanPlan, planSentence, type CampusEstimate } from "@/lib/stats";
 
 interface ReportViewProps {
   session: AuditSession;
+  /** The session's bags as served by the adapter (lib/adapter.ts). */
   seedBags: Bag[];
+  buildings: Building[];
   initialEstimate: CampusEstimate;
 }
 
-export function ReportView({ session, seedBags, initialEstimate }: ReportViewProps) {
+export function ReportView({ session, seedBags, buildings, initialEstimate }: ReportViewProps) {
   const saved = useSavedBags();
   const bags = useMemo(() => [...seedBags, ...saved.bags.filter((b) => b.sessionId === session.id)], [seedBags, saved.bags, session.id]);
   const { estimate, computing } = useCampusEstimate(bags, initialEstimate);
@@ -30,7 +33,7 @@ export function ReportView({ session, seedBags, initialEstimate }: ReportViewPro
   const dirtiest = [...c.rows].sort((a, b) => b.point - a.point)[0];
   const totals = contaminantTotals(bags);
   const topContaminant = CONTAMINANTS.map((x) => ({ ...x, count: totals[x.id] })).sort((a, b) => b.count - a.count)[0];
-  const plan = neymanPlan(bags, session.targetHalfWidth);
+  const plan = neymanPlan(bags, session.targetHalfWidth, buildings);
   const liveCount = bags.length - seedBags.length;
   const dateLabel = new Date(`${session.date}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
@@ -48,6 +51,27 @@ export function ReportView({ session, seedBags, initialEstimate }: ReportViewPro
     } catch {
       setShareNote("Sharing was cancelled. The address bar link works too.");
     }
+  }
+
+  if (bags.length === 0) {
+    return (
+      <article className="mx-auto max-w-5xl px-5 pb-20 pt-10">
+        <p className="kicker">
+          {session.campus} · {dateLabel}
+        </p>
+        <h1 className="mt-2 max-w-[22ch] text-5xl leading-[1.05] sm:text-6xl">{session.title}</h1>
+        <div className="mt-12 max-w-[65ch] border-t border-foreground pt-6">
+          <h2 className="text-3xl leading-tight">No bags logged yet</h2>
+          <p className="mt-3 text-muted-foreground">
+            The report fills in once the first bag is sorted and weighed.{" "}
+            <Link className="underline decoration-1 underline-offset-4" href="/audit/bin">
+              Log the first bag
+            </Link>
+            .
+          </p>
+        </div>
+      </article>
+    );
   }
 
   return (

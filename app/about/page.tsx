@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { BOOT_ITERATIONS, BUILDINGS, CONTAMINANTS, DETECTION_THRESHOLD, MODEL_ID, SEED_BAGS } from "@/lib/data";
+import { getAdapter } from "@/lib/adapter";
+import { BOOT_ITERATIONS, CONTAMINANTS, DETECTION_THRESHOLD, MODEL_ID, SESSION } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Method",
   description: "How Tamisa detects contaminants, estimates the campus rate with a stratified bootstrap and plans the next audit with Neyman allocation.",
 };
 
-const SECTIONS = [
+const sections = (bagCount: number, buildingCount: number) => [
   {
     kicker: "Detection",
     summary: `${MODEL_ID} finds contaminants from plain-text prompts, on the device.`,
@@ -35,14 +36,16 @@ const SECTIONS = [
   },
   {
     kicker: "The demo data",
-    summary: `The seeded audit has ${SEED_BAGS.length} bags across ${BUILDINGS.length} fictional buildings, sized like a real campus audit.`,
+    summary: `The seeded audit has ${bagCount} bags across ${buildingCount} fictional buildings, sized like a real campus audit.`,
     body: [
       "Toronto Metropolitan University's 2025 waste audit sorted 27 garbage and 11 organics samples and published a single 35.64% recovery figure, with no margin of error that we could find. The Northgate session in this app is synthetic, built to that scale so the uncertainty you see is the uncertainty a real audit carries. Bags you log yourself are real and stay in your browser's storage.",
     ],
   },
 ];
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const bundle = await getAdapter().getSession(SESSION.id);
+  const SECTIONS = sections(bundle?.bags.length ?? 0, bundle?.buildings.length ?? 0);
   return (
     <article className="mx-auto max-w-5xl px-5 pb-20 pt-12">
       <p className="kicker">Method and tech</p>
@@ -74,7 +77,7 @@ export default function AboutPage() {
       <section className="mt-14">
         <h2 className="text-3xl">What runs where</h2>
         <ul className="mt-4 max-w-[66ch] border-t border-foreground text-base">
-          <li className="border-b border-border py-2">Next.js 15 App Router on Vercel, with no server routes and no database.</li>
+          <li className="border-b border-border py-2">Next.js 15 App Router on Vercel, with read-only seed routes under /api and no database.</li>
           <li className="border-b border-border py-2">@huggingface/transformers in the browser for OWL-ViT detection.</li>
           <li className="border-b border-border py-2">A Web Worker for the bootstrap, with a main-thread fallback.</li>
           <li className="border-b border-border py-2">d3 scales and Motion transitions for the interval charts.</li>
